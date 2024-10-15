@@ -22,7 +22,7 @@ updated_matches = []
 try:
     # Setup BrowserMob Proxy and WebDriver
     logging.info("Setting up proxy...")
-    server = Server("/home/briank/Downloads/browsermob-proxy-2.1.4/bin/browsermob-proxy")
+    server = Server("/home/runner/browsermob-proxy/bin/browsermob-proxy")
     server.start()
     proxy = server.create_proxy()
     logging.info("Proxy setup complete.")
