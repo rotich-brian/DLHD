@@ -1,6 +1,5 @@
 name: Selenium Scraper
 
-# Event triggers
 on:
   workflow_dispatch:  # Allows you to trigger the action manually
   schedule:  # Automatically run on a schedule
@@ -9,7 +8,6 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-
     steps:
       # Step 1: Checkout the repository
       - name: Checkout Repository
