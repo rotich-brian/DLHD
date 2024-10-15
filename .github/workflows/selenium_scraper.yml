@@ -4,20 +4,20 @@ name: Selenium Scraper
 on:
   workflow_dispatch:  # Allows you to trigger the action manually
   schedule:  # Automatically run on a schedule
-    - cron: '0 * * * *'  # Runs every hour, modify this as needed
+    - cron: '0 * * * *'  # Runs every hour, modify as needed
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout the repository (Updated to v3)
       - name: Checkout Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      # Step 2: Set up Python
+      # Step 2: Set up Python (Updated to v4)
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
