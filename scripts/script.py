@@ -3,8 +3,8 @@ import time
 import logging
 import os
 from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 from browsermobproxy import Server
 
@@ -49,13 +49,14 @@ try:
     options.add_argument("--disable-dev-shm-usage")
     options.proxy = proxy_settings
 
-    geckodriver_path = '/usr/local/bin/geckodriver'
-    if not os.path.exists(geckodriver_path):
-        logging.error(f"Geckodriver not found at {geckodriver_path}. Exiting...")
+    # Specify path to ChromeDriver
+    chromedriver_path = '/usr/local/bin/chromedriver'
+    if not os.path.exists(chromedriver_path):
+        logging.error(f"ChromeDriver not found at {chromedriver_path}. Exiting...")
         exit(1)
 
-    service = Service(geckodriver_path)
-    driver = webdriver.Firefox(service=service, options=options)
+    service = Service(chromedriver_path)
+    driver = webdriver.Chrome(service=service, options=options)
     logging.info("WebDriver setup complete.")
 
     # Loop through matches
