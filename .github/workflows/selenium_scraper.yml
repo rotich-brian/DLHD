@@ -43,7 +43,7 @@ jobs:
           ls -l /home/runner/
 
       - name: Run Selenium Script
-        run: python scripts/your_script.py
+        run: python scripts/script.py
 
       - name: Upload Result (JSON Output)
         uses: actions/upload-artifact@v3
