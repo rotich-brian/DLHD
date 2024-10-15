@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import os
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
@@ -24,7 +25,13 @@ server = None
 try:
     # Setup BrowserMob Proxy and WebDriver
     logging.info("Setting up proxy...")
-    server = Server("/home/runner/browsermob-proxy/bin/browsermob-proxy")  # Ensure this path is correct
+    browsermob_proxy_path = os.getenv("BROWSERPROXY_PATH", "/home/runner/browsermob-proxy/bin/browsermob-proxy")
+    
+    if not os.path.exists(browsermob_proxy_path):
+        logging.error(f"BrowserMob Proxy not found at {browsermob_proxy_path}. Exiting...")
+        exit(1)
+
+    server = Server(browsermob_proxy_path)  # Dynamically use the path from environment
     server.start()
     proxy = server.create_proxy()
     logging.info("Proxy setup complete.")
@@ -40,7 +47,12 @@ try:
     options.add_argument("--disable-gpu")
     options.proxy = proxy_settings
 
-    service = Service('/usr/local/bin/geckodriver')  # Ensure geckodriver is installed in this path
+    geckodriver_path = '/usr/local/bin/geckodriver'
+    if not os.path.exists(geckodriver_path):
+        logging.error(f"Geckodriver not found at {geckodriver_path}. Exiting...")
+        exit(1)
+
+    service = Service(geckodriver_path)
     driver = webdriver.Firefox(service=service, options=options)
     logging.info("WebDriver setup complete.")
 
@@ -90,7 +102,6 @@ try:
                     updated_match["m3u8_urls"].append(m3u8_url)
                     updated_match["referrer"] = referrer_header
                     updated_match["origin"] = origin_header
-
                     break
                 time.sleep(1)  # Sleep before checking again
 
