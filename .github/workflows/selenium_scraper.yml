@@ -21,8 +21,25 @@ jobs:
 
       - name: Install Dependencies and Firefox
         run: |
+          # Uninstall Firefox Snap package if it exists
+          sudo snap remove firefox || true
+
+          # Add Mozilla team PPA for Firefox
+          sudo add-apt-repository ppa:mozillateam/ppa -y
           sudo apt-get update
-          sudo apt-get install -y firefox
+
+          # Alter package priority to prefer PPA version
+          echo '
+          Package: *
+          Pin: release o=LP-PPA-mozillateam
+          Pin-Priority: 1001
+          ' | sudo tee /etc/apt/preferences.d/mozilla-firefox
+
+          # Allow Firefox upgrades to be installed automatically
+          echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:${distro_codename}";' | sudo tee /etc/apt/apt.conf.d/51unattended-upgrades-firefox
+
+          # Install Firefox via APT
+          sudo apt install firefox -y
           
           # Manually download geckodriver v0.35.0
           GECKODRIVER_VERSION=v0.35.0
