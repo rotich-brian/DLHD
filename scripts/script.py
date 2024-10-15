@@ -46,10 +46,11 @@ try:
     options.headless = True
     options.add_argument('--no-sandbox')
     options.add_argument('--headless')
-    
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--remote-debugging-port=9222")
+    options.add_argument("--autoplay-policy=no-user-gesture-required")
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.proxy = proxy_settings
 
     geckodriver_path = '/usr/local/bin/chromedriver'
@@ -83,6 +84,11 @@ try:
             # Open the link
             driver.get(link)
             logging.info("Waiting for network response...")
+
+            # Wait until the video element is ready and play it if needed
+            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'video')))
+            video_element = driver.find_element_by_tag_name("video")
+            driver.execute_script("arguments[0].muted = false; arguments[0].play();", video_element)
 
             m3u8_url = None
             referrer_header = None
