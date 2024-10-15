@@ -31,7 +31,7 @@ try:
         logging.error(f"BrowserMob Proxy not found at {browsermob_proxy_path}. Exiting...")
         exit(1)
 
-    server = Server(browsermob_proxy_path)  # Dynamically use the path from environment
+    server = Server(browsermob_proxy_path)
     server.start()
     proxy = server.create_proxy()
     logging.info("Proxy setup complete.")
@@ -43,8 +43,10 @@ try:
     })
 
     options = Options()
-    options.add_argument("--headless")
+    options.headless = True
     options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
     options.proxy = proxy_settings
 
     geckodriver_path = '/usr/local/bin/geckodriver'
@@ -103,18 +105,7 @@ try:
                     updated_match["referrer"] = referrer_header
                     updated_match["origin"] = origin_header
                     break
-                time.sleep(1)  # Sleep before checking again
-
-            # Print the results
-            if m3u8_url:
-                logging.info(f"Match: {match_name}")
-                logging.info(f"URL: {m3u8_url}")
-                logging.info(f"Referrer: {referrer_header}")
-                logging.info(f"Origin: {origin_header}")
-            else:
-                logging.info(f"Match: {match_name}")
-                logging.info("URL: None")
-                logging.info("Headers: None")
+                time.sleep(1)
 
         updated_matches.append(updated_match)
 
