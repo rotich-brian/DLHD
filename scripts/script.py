@@ -47,15 +47,15 @@ try:
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--remote-debugging-port=9222")
     options.proxy = proxy_settings
 
-    # Specify path to ChromeDriver
-    chromedriver_path = '/usr/local/bin/chromedriver'
-    if not os.path.exists(chromedriver_path):
-        logging.error(f"ChromeDriver not found at {chromedriver_path}. Exiting...")
+    geckodriver_path = '/usr/local/bin/chromedriver'
+    if not os.path.exists(geckodriver_path):
+        logging.error(f"ChromeDriver not found at {geckodriver_path}. Exiting...")
         exit(1)
 
-    service = Service(chromedriver_path)
+    service = Service(geckodriver_path)
     driver = webdriver.Chrome(service=service, options=options)
     logging.info("WebDriver setup complete.")
 
