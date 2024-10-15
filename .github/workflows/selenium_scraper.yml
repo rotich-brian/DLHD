@@ -1,10 +1,7 @@
 name: Selenium Scraper
 
 on:
-  # This allows you to run the workflow manually via the GitHub UI
   workflow_dispatch:
-
-  # This runs the workflow whenever a push is made to the main branch
   push:
     branches:
       - main
@@ -29,6 +26,7 @@ jobs:
           wget https://github.com/mozilla/geckodriver/releases/download/v0.35.0/geckodriver-v0.35.0-linux64.tar.gz
           tar -xvzf geckodriver-v0.35.0-linux64.tar.gz
           sudo mv geckodriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/geckodriver
           wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-2.1.4/browsermob-proxy-2.1.4-bin.zip
           unzip browsermob-proxy-2.1.4-bin.zip
           mv browsermob-proxy-2.1.4 /home/runner/browsermob-proxy
@@ -41,6 +39,7 @@ jobs:
           echo "Geckodriver version: $(geckodriver --version)"
           ls -l /usr/local/bin
           ls -l /home/runner/
+          curl --version
 
       - name: Run Selenium Script
         run: python scripts/script.py
