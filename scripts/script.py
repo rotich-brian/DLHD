@@ -93,12 +93,7 @@ try:
 
             while time.time() - start_time < timeout:
                 for entry in proxy.har['log']['entries']:
-                    # # Log each entry to see all requests
-                    # logging.info(f"Request URL: {entry['request']['url']}")
-                    # logging.info(f"Request Headers: {entry['request']['headers']}")
-
                     request_url = entry['request']['url']
-                    
                     # Use 'in' to check if the URL contains 'mono.m3u8'
                     if "mono.m3u8" in request_url:
                         m3u8_url = request_url
@@ -108,6 +103,9 @@ try:
                         referrer_header = headers_dict.get('referer')
                         origin_header = headers_dict.get('origin')
 
+                        logging.info(f"Found m3u8 URL: {m3u8_url}")
+                        logging.info(f"Referrer: {referrer_header}")
+                        logging.info(f"Origin: {origin_header}")
                         break
                 
                 if m3u8_url:
@@ -115,7 +113,11 @@ try:
                     updated_match["referrer"] = referrer_header
                     updated_match["origin"] = origin_header
                     break
+
                 time.sleep(1)
+
+            if not m3u8_url:
+                logging.warning(f"No m3u8 URL found for match: {match_name} - Link: {link}")
 
         updated_matches.append(updated_match)
 
