@@ -1,3 +1,14 @@
+name: Selenium Scraper
+
+on:
+  # This allows you to run the workflow manually via the GitHub UI
+  workflow_dispatch:
+
+  # This runs the workflow whenever a push is made to the main branch
+  push:
+    branches:
+      - main
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
