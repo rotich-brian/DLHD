@@ -3,8 +3,8 @@ import time
 import logging
 import os
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -45,6 +45,7 @@ try:
         'sslProxy': proxy.proxy
     })
 
+    # Setup Firefox options
     options = Options()
     options.headless = True
     options.add_argument('--no-sandbox')
@@ -56,13 +57,13 @@ try:
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.proxy = proxy_settings
 
-    geckodriver_path = '/usr/local/bin/chromedriver'
+    geckodriver_path = '/usr/local/bin/geckodriver'
     if not os.path.exists(geckodriver_path):
-        logging.error(f"ChromeDriver not found at {geckodriver_path}. Exiting...")
+        logging.error(f"GeckoDriver not found at {geckodriver_path}. Exiting...")
         exit(1)
 
     service = Service(geckodriver_path)
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Firefox(service=service, options=options)
     logging.info("WebDriver setup complete.")
 
     # Loop through matches
@@ -90,7 +91,7 @@ try:
 
             # Wait until the video element is ready and play it if needed
             WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'video')))
-            video_element = driver.find_element_by_tag_name("video")
+            video_element = driver.find_element(By.TAG_NAME, "video")
             driver.execute_script("arguments[0].muted = false; arguments[0].play();", video_element)
 
             m3u8_url = None
