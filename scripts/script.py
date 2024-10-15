@@ -19,10 +19,12 @@ with open('scripts/soccer_data.json') as file:
 matches = json.loads(data)["matches"]
 
 updated_matches = []
+driver = None
+server = None
 try:
     # Setup BrowserMob Proxy and WebDriver
     logging.info("Setting up proxy...")
-    server = Server("/home/runner/browsermob-proxy/bin/browsermob-proxy")
+    server = Server("/home/runner/browsermob-proxy/bin/browsermob-proxy")  # Ensure this path is correct
     server.start()
     proxy = server.create_proxy()
     logging.info("Proxy setup complete.")
@@ -38,13 +40,13 @@ try:
     options.add_argument("--disable-gpu")
     options.proxy = proxy_settings
 
-    service = Service('/usr/zcustom/geckodriver')
+    service = Service('/usr/local/bin/geckodriver')  # Ensure geckodriver is installed in this path
     driver = webdriver.Firefox(service=service, options=options)
     logging.info("WebDriver setup complete.")
 
     # Loop through matches
     for match in matches:
-        competition= match['competition']
+        competition = match['competition']
         match_name = match['match']
         updated_match = {
             "competition": competition,
@@ -54,7 +56,7 @@ try:
             "referrer": None,
             "origin": None
         }
-        
+
         for link in match['links']:
             logging.info(f"\nFetching match: {match_name} - Link: {link}")
 
@@ -88,16 +90,12 @@ try:
                     updated_match["m3u8_urls"].append(m3u8_url)
                     updated_match["referrer"] = referrer_header
                     updated_match["origin"] = origin_header
-                    
+
                     break
                 time.sleep(1)  # Sleep before checking again
 
             # Print the results
             if m3u8_url:
-                # updated_match["m3u8_urls"].append(m3u8_url)
-                # updated_match["referrer"] = referrer_header
-                # updated_match["origin"] = origin_header
-                
                 logging.info(f"Match: {match_name}")
                 logging.info(f"URL: {m3u8_url}")
                 logging.info(f"Referrer: {referrer_header}")
@@ -106,13 +104,15 @@ try:
                 logging.info(f"Match: {match_name}")
                 logging.info("URL: None")
                 logging.info("Headers: None")
-                
+
         updated_matches.append(updated_match)
 
 finally:
     # Clean up
-    driver.quit()
-    server.stop()
+    if driver:
+        driver.quit()
+    if server:
+        server.stop()
     logging.info("All done. WebDriver and server stopped.")
 
 # Prepare the updated JSON data
