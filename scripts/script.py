@@ -93,12 +93,14 @@ try:
 
             while time.time() - start_time < timeout:
                 for entry in proxy.har['log']['entries']:
-                    # Log each entry to see all requests
-                    logging.info(f"Request URL: {entry['request']['url']}")
-                    logging.info(f"Request Headers: {entry['request']['headers']}")
+                    # # Log each entry to see all requests
+                    # logging.info(f"Request URL: {entry['request']['url']}")
+                    # logging.info(f"Request Headers: {entry['request']['headers']}")
 
                     request_url = entry['request']['url']
-                    if request_url.endswith('mono.m3u8?token=none'):
+                    
+                    # Use 'in' to check if the URL contains 'mono.m3u8'
+                    if "mono.m3u8" in request_url:
                         m3u8_url = request_url
                         headers = entry['request']['headers']
 
