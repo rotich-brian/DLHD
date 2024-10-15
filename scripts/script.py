@@ -98,7 +98,7 @@ try:
                     logging.info(f"Request Headers: {entry['request']['headers']}")
 
                     request_url = entry['request']['url']
-                    if request_url.endswith('mono.m3u8'):
+                    if request_url.endswith('mono.m3u8?token=none'):
                         m3u8_url = request_url
                         headers = entry['request']['headers']
 
