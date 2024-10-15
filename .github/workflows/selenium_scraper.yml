@@ -22,7 +22,14 @@ jobs:
       - name: Install Dependencies and Firefox
         run: |
           sudo apt-get update
-          sudo apt-get install -y firefox geckodriver
+          sudo apt-get install -y firefox
+          
+          # Manually download geckodriver v0.35.0
+          GECKODRIVER_VERSION=v0.35.0
+          wget https://github.com/mozilla/geckodriver/releases/download/${GECKODRIVER_VERSION}/geckodriver-${GECKODRIVER_VERSION}-linux64.tar.gz
+          tar -xvzf geckodriver-${GECKODRIVER_VERSION}-linux64.tar.gz
+          sudo mv geckodriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/geckodriver
           
           # Install BrowserMob Proxy
           wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-2.1.4/browsermob-proxy-2.1.4-bin.zip
