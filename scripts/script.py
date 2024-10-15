@@ -6,9 +6,6 @@ from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.proxy import Proxy, ProxyType
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
 from browsermobproxy import Server
 
 # Set up logging
@@ -45,18 +42,22 @@ try:
         'sslProxy': proxy.proxy
     })
 
-    # Setup Firefox options
     options = Options()
-    options.headless = True
+    options.headless = True  # Firefox headless mode
     options.add_argument('--no-sandbox')
     options.add_argument('--headless')
-    options.add_argument("--disable-gpu")
+    
+    options.add_argument("--disable-gpu")  # Not necessary in headless mode, but can be kept
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--autoplay-policy=no-user-gesture-required")
-    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
-    options.proxy = proxy_settings
 
+    # Set proxy settings for Firefox
+    options.set_preference("network.proxy.type", 1)
+    options.set_preference("network.proxy.http", proxy.proxy.split(":")[0])
+    options.set_preference("network.proxy.http_port", int(proxy.proxy.split(":")[1]))
+    options.set_preference("network.proxy.ssl", proxy.proxy.split(":")[0])
+    options.set_preference("network.proxy.ssl_port", int(proxy.proxy.split(":")[1]))
+
+    # Firefox driver path
     geckodriver_path = '/usr/local/bin/geckodriver'
     if not os.path.exists(geckodriver_path):
         logging.error(f"GeckoDriver not found at {geckodriver_path}. Exiting...")
@@ -88,11 +89,6 @@ try:
             # Open the link
             driver.get(link)
             logging.info("Waiting for network response...")
-
-            # Wait until the video element is ready and play it if needed
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'video')))
-            video_element = driver.find_element(By.TAG_NAME, "video")
-            driver.execute_script("arguments[0].muted = false; arguments[0].play();", video_element)
 
             m3u8_url = None
             referrer_header = None
