@@ -19,14 +19,14 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install Dependencies and Firefox
+      - name: Install Dependencies and Chrome
         run: |
           sudo apt-get update
-          sudo apt-get install -y firefox openjdk-11-jre
-          wget https://github.com/mozilla/geckodriver/releases/download/v0.35.0/geckodriver-v0.35.0-linux64.tar.gz
-          tar -xvzf geckodriver-v0.35.0-linux64.tar.gz
-          sudo mv geckodriver /usr/local/bin/
-          sudo chmod +x /usr/local/bin/geckodriver
+          sudo apt-get install -y google-chrome-stable
+          wget https://chromedriver.storage.googleapis.com/113.0.5672.63/chromedriver_linux64.zip
+          unzip chromedriver_linux64.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
           wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-2.1.4/browsermob-proxy-2.1.4-bin.zip
           unzip browsermob-proxy-2.1.4-bin.zip
           mv browsermob-proxy-2.1.4 /home/runner/browsermob-proxy
@@ -36,7 +36,8 @@ jobs:
         run: |
           echo "Running as $(whoami)"
           echo "Python version: $(python --version)"
-          echo "Geckodriver version: $(geckodriver --version)"
+          echo "Chrome version: $(google-chrome-stable --version)"
+          echo "ChromeDriver version: $(chromedriver --version)"
           ls -l /usr/local/bin
           ls -l /home/runner/
           curl --version
