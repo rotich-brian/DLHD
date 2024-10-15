@@ -1,7 +1,10 @@
 name: Selenium Scraper
 
+# Event triggers
 on:
   workflow_dispatch:  # Allows you to trigger the action manually
+  schedule:  # Automatically run on a schedule
+    - cron: '0 * * * *'  # Runs every hour, you can modify this as needed
 
 jobs:
   scrape:
@@ -28,14 +31,13 @@ jobs:
           mv browsermob-proxy-2.1.4 /home/runner/browsermob-proxy
           python -m pip install selenium browsermob-proxy
 
-      # Step 4: Run the Selenium script
+      # Step 4: Run Selenium Script
       - name: Run Selenium Script
         run: python scripts/your_script.py
 
-      # Step 5: Upload the result (optional)
+      # Step 5: Upload Result (optional)
       - name: Upload Result (JSON Output)
         uses: actions/upload-artifact@v2
         with:
           name: soccer-links-json
           path: scripts/soccer_links.json
-
