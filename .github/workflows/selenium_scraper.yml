@@ -1,1 +1,41 @@
+name: Selenium Scraper
+
+on:
+  workflow_dispatch:  # Allows you to trigger the action manually
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      # Step 3: Install dependencies and Firefox
+      - name: Install Dependencies and Firefox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y firefox-geckodriver openjdk-11-jre
+          wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-2.1.4/browsermob-proxy-2.1.4-bin.zip
+          unzip browsermob-proxy-2.1.4-bin.zip
+          mv browsermob-proxy-2.1.4 /home/runner/browsermob-proxy
+          python -m pip install selenium browsermob-proxy
+
+      # Step 4: Run the Selenium script
+      - name: Run Selenium Script
+        run: python scripts/your_script.py
+
+      # Step 5: Upload the result (optional)
+      - name: Upload Result (JSON Output)
+        uses: actions/upload-artifact@v2
+        with:
+          name: soccer-links-json
+          path: scripts/soccer_links.json
 
