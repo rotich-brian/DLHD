@@ -1,89 +1,67 @@
+import json
+import time
+import logging
+import os
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.proxy import Proxy, ProxyType
 from browsermobproxy import Server
-import time
-import logging
-import json
-import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
-def setup_browsermob_proxy():
-    browsermob_proxy_path = os.getenv("BROWSERPROXY_PATH", "/usr/local/bin/browsermob-proxy/bin/browsermob-proxy")
+# Your JSON data
+data = {}
+with open('scripts/soccer_data.json') as file:
+    data = file.read()
+
+# Parse JSON
+matches = json.loads(data)["matches"]
+
+updated_matches = []
+driver = None
+server = None
+try:
+    # Setup BrowserMob Proxy and WebDriver
+    logging.info("Setting up proxy...")
+    browsermob_proxy_path = os.getenv("BROWSERPROXY_PATH", "/home/runner/browsermob-proxy/bin/browsermob-proxy")
+    
     if not os.path.exists(browsermob_proxy_path):
         logging.error(f"BrowserMob Proxy not found at {browsermob_proxy_path}. Exiting...")
         exit(1)
 
     server = Server(browsermob_proxy_path)
-    try:
-        server.start()
-        proxy = server.create_proxy()
-        logging.info("Proxy setup complete.")
-        return server, proxy
-    except Exception as e:
-        logging.error(f"Failed to start BrowserMob Proxy: {e}")
-        exit(1)
+    server.start()
+    proxy = server.create_proxy()
+    logging.info("Proxy setup complete.")
 
-def setup_selenium_driver(proxy):
+    proxy_settings = Proxy({
+        'proxyType': ProxyType.MANUAL,
+        'httpProxy': proxy.proxy,
+        'sslProxy': proxy.proxy
+    })
+
     options = Options()
-    options.headless = True  # Ensure headless mode is enabled if running in CI or a headless environment
-    options.add_argument("--no-sandbox")  # This can be useful in CI, but discouraged for regular use
-    options.add_argument("start-maximized")  # Maximizes the window on startup
-    options.add_argument("--disable-gpu")  # Disable GPU usage
-    options.add_argument("--disable-dev-shm-usage")  # Disable /dev/shm usage (useful for CI)
+    options.headless = True
+    options.add_argument('--no-sandbox')
+    options.add_argument('--headless')
+    
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--remote-debugging-port=9222")
+    options.proxy = proxy_settings
 
-
-    # Set the binary location if Chrome is not installed at the default location
-    options.binary_location = '/usr/bin/google-chrome'  # Adjust this path if necessary
-
-    # Set proxy settings for Chrome
-    proxy_split = proxy.proxy.split(":")
-    options.add_argument(f'--proxy-server={proxy_split[0]}:{proxy_split[1]}')
-
-    # Specify the path for ChromeDriver
-    chrome_driver_binary = '/usr/local/bin/chromedriver'  # Adjust this path to your system's chromedriver
-    if not os.path.exists(chrome_driver_binary):
-        logging.error(f"ChromeDriver not found at {chrome_driver_binary}. Exiting...")
+    geckodriver_path = '/usr/local/bin/chromedriver'
+    if not os.path.exists(geckodriver_path):
+        logging.error(f"ChromeDriver not found at {geckodriver_path}. Exiting...")
         exit(1)
 
-    service = Service(chrome_driver_binary)
+    service = Service(geckodriver_path)
     driver = webdriver.Chrome(service=service, options=options)
     logging.info("WebDriver setup complete.")
-    return driver
 
-def fetch_m3u8_url(proxy, link, timeout=30):
-    proxy.new_har("network_capture")
-    driver.get(link)
-    logging.info(f"Waiting for network response for link: {link}...")
-
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        for entry in proxy.har['log']['entries']:
-            request_url = entry['request']['url']
-            if "mono.m3u8" in request_url:
-                headers = entry['request']['headers']
-                headers_dict = {header['name'].lower(): header['value'] for header in headers}
-                return request_url, headers_dict.get('referer'), headers_dict.get('origin')
-        time.sleep(1)
-
-    logging.warning(f"No m3u8 URL found for link: {link} within {timeout} seconds.")
-    return None, None, None
-
-# Main Script
-data = {}
-with open('scripts/soccer_data.json') as file:
-    data = file.read()
-
-matches = json.loads(data)["matches"]
-updated_matches = []
-
-# Set up BrowserMob Proxy and Selenium WebDriver
-server, proxy = setup_browsermob_proxy()
-driver = setup_selenium_driver(proxy)
-
-try:
+    # Loop through matches
     for match in matches:
         competition = match['competition']
         match_name = match['match']
@@ -97,25 +75,64 @@ try:
         }
 
         for link in match['links']:
-            logging.info(f"Fetching match: {match_name} - Link: {link}")
-            m3u8_url, referrer, origin = fetch_m3u8_url(proxy, link)
+            logging.info(f"\nFetching match: {match_name} - Link: {link}")
 
-            if m3u8_url:
-                updated_match["m3u8_urls"].append(m3u8_url)
-                updated_match["referrer"] = referrer
-                updated_match["origin"] = origin
+            # Start new HAR for each link
+            proxy.new_har("network_capture")
+
+            # Open the link
+            driver.get(link)
+            logging.info("Waiting for network response...")
+
+            m3u8_url = None
+            referrer_header = None
+            origin_header = None
+
+            timeout = 30  # Maximum wait time in seconds
+            start_time = time.time()
+
+            while time.time() - start_time < timeout:
+                for entry in proxy.har['log']['entries']:
+                    request_url = entry['request']['url']
+                    # Use 'in' to check if the URL contains 'mono.m3u8'
+                    if "mono.m3u8" in request_url:
+                        m3u8_url = request_url
+                        headers = entry['request']['headers']
+
+                        headers_dict = {header['name'].lower(): header['value'] for header in headers}
+                        referrer_header = headers_dict.get('referer')
+                        origin_header = headers_dict.get('origin')
+
+                        logging.info(f"Found m3u8 URL: {m3u8_url}")
+                        logging.info(f"Referrer: {referrer_header}")
+                        logging.info(f"Origin: {origin_header}")
+                        break
+                
+                if m3u8_url:
+                    updated_match["m3u8_urls"].append(m3u8_url)
+                    updated_match["referrer"] = referrer_header
+                    updated_match["origin"] = origin_header
+                    break
+
+                time.sleep(1)
+
+            if not m3u8_url:
+                logging.warning(f"No m3u8 URL found for match: {match_name} - Link: {link}")
 
         updated_matches.append(updated_match)
 
 finally:
+    # Clean up
     if driver:
         driver.quit()
     if server:
         server.stop()
     logging.info("All done. WebDriver and server stopped.")
 
-# Save the updated data to a new JSON file
+# Prepare the updated JSON data
 updated_data = {"matches": updated_matches}
+
+# Output the updated JSON
 with open("scripts/soccer_links.json", "w") as f:
     json.dump(updated_data, f, indent=4)
 
