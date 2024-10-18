@@ -89,9 +89,9 @@ try:
             logging.info("Waiting for network response...")
 
             # Wait until the video element is ready and play it if needed
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'video')))
-            video_element = driver.find_element_by_tag_name("video")
-            driver.execute_script("arguments[0].muted = false; arguments[0].play();", video_element)
+            # WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'video')))
+            # video_element = driver.find_element_by_tag_name("video")
+            # driver.execute_script("arguments[0].muted = false; arguments[0].play();", video_element)
 
             m3u8_url = None
             referrer_header = None
