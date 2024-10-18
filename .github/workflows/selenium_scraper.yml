@@ -19,47 +19,28 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install Dependencies and Firefox
+      - name: Install Dependencies and Chrome
         run: |
-          # Uninstall Firefox Snap package if it exists
-          sudo snap remove firefox || true
+          # Install Google Chrome
+          sudo apt update
+          sudo apt install -y google-chrome-stable
 
-          # Add Mozilla team PPA for Firefox
-          sudo add-apt-repository ppa:mozillateam/ppa -y
-          sudo apt-get update
+          # Download and install ChromeDriver
+          CHROMEDRIVER_VERSION=$(curl -sS https://chromedriver.storage.googleapis.com/LATEST_RELEASE)
+          wget https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip
+          unzip chromedriver_linux64.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
 
-          # Alter package priority to prefer PPA version
-          echo '
-          Package: *
-          Pin: release o=LP-PPA-mozillateam
-          Pin-Priority: 1001
-          ' | sudo tee /etc/apt/preferences.d/mozilla-firefox
-
-          # Allow Firefox upgrades to be installed automatically
-          echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:${distro_codename}";' | sudo tee /etc/apt/apt.conf.d/51unattended-upgrades-firefox
-
-          # Install Firefox via APT
-          sudo apt install firefox -y
-          
-          # Manually download geckodriver v0.35.0
-          GECKODRIVER_VERSION=v0.35.0
-          wget https://github.com/mozilla/geckodriver/releases/download/${GECKODRIVER_VERSION}/geckodriver-${GECKODRIVER_VERSION}-linux64.tar.gz
-          tar -xvzf geckodriver-${GECKODRIVER_VERSION}-linux64.tar.gz
-          sudo mv geckodriver /usr/local/bin/
-          sudo chmod +x /usr/local/bin/geckodriver
-          
-          # Install BrowserMob Proxy
-          wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-2.1.4/browsermob-proxy-2.1.4-bin.zip
-          unzip browsermob-proxy-2.1.4-bin.zip
-          mv browsermob-proxy-2.1.4 /home/runner/browsermob-proxy
-          python -m pip install selenium browsermob-proxy
+          # Install Python dependencies
+          python -m pip install selenium
 
       - name: Debug Information
         run: |
           echo "Running as $(whoami)"
           echo "Python version: $(python --version)"
-          echo "Firefox version: $(firefox --version)"
-          echo "GeckoDriver version: $(geckodriver --version)"
+          echo "Chrome version: $(google-chrome-stable --version)"
+          echo "ChromeDriver version: $(chromedriver --version)"
           ls -l /usr/local/bin
           ls -l /home/runner/
           curl --version
