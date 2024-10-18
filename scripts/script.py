@@ -1,7 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.proxy import Proxy, ProxyType
 from browsermobproxy import Server
 import time
 import logging
@@ -29,29 +28,27 @@ def setup_browsermob_proxy():
 
 def setup_selenium_driver(proxy):
     options = Options()
-    options.headless = True
-    options.add_argument('--no-sandbox')
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--remote-debugging-port=9222")  # Debugging port for CI environments
-    options.add_argument("--disable-software-rasterizer")  # Prevent software rasterizer errors
-    options.add_argument("--start-maximized")  # Maximize Chrome on start
-    options.add_argument("--disable-extensions")  # Disable extensions if needed
-    options.add_argument("--disable-logging")  # Disable logs if needed
+    options.headless = True  # Ensure headless mode is enabled if running in CI or a headless environment
+    options.add_argument("--no-sandbox")  # This can be useful in CI, but discouraged for regular use
+    options.add_argument("start-maximized")  # Maximizes the window on startup
+    options.add_argument("--disable-gpu")  # Disable GPU usage
+    options.add_argument("--disable-dev-shm-usage")  # Disable /dev/shm usage (useful for CI)
 
-    # Set the correct Chrome binary path for the environment
-    options.binary_location = '/usr/bin/chromium-browser'  # Adjust this path if needed for your environment
+
+    # Set the binary location if Chrome is not installed at the default location
+    options.binary_location = '/usr/bin/google-chrome'  # Adjust this path if necessary
 
     # Set proxy settings for Chrome
     proxy_split = proxy.proxy.split(":")
     options.add_argument(f'--proxy-server={proxy_split[0]}:{proxy_split[1]}')
 
-    chromedriver_path = '/usr/local/bin/chromedriver'
-    if not os.path.exists(chromedriver_path):
-        logging.error(f"ChromeDriver not found at {chromedriver_path}. Exiting...")
+    # Specify the path for ChromeDriver
+    chrome_driver_binary = '/usr/local/bin/chromedriver'  # Adjust this path to your system's chromedriver
+    if not os.path.exists(chrome_driver_binary):
+        logging.error(f"ChromeDriver not found at {chrome_driver_binary}. Exiting...")
         exit(1)
 
-    service = Service(chromedriver_path)
+    service = Service(chrome_driver_binary)
     driver = webdriver.Chrome(service=service, options=options)
     logging.info("WebDriver setup complete.")
     return driver
