@@ -127,6 +127,7 @@ try:
 
             if not m3u8_url:
                 logging.warning(f"No m3u8 URL found for match: {match_name} - Link: {link}")
+                print("")
 
         updated_matches.append(updated_match)
 
