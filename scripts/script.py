@@ -3,9 +3,8 @@ import time
 import logging
 import os
 from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.common.proxy import Proxy, ProxyType
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from browsermobproxy import Server
 
 # Set up logging
@@ -34,21 +33,18 @@ def setup_selenium_driver(proxy):
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-dev-shm-usage")
 
-    # Set proxy settings for Firefox
+    # Set proxy settings for Chrome
     proxy_split = proxy.proxy.split(":")
-    options.set_preference("network.proxy.type", 1)
-    options.set_preference("network.proxy.http", proxy_split[0])
-    options.set_preference("network.proxy.http_port", int(proxy_split[1]))
-    options.set_preference("network.proxy.ssl", proxy_split[0])
-    options.set_preference("network.proxy.ssl_port", int(proxy_split[1]))
+    options.add_argument(f'--proxy-server={proxy_split[0]}:{proxy_split[1]}')
 
-    geckodriver_path = '/usr/local/bin/geckodriver'
-    if not os.path.exists(geckodriver_path):
-        logging.error(f"GeckoDriver not found at {geckodriver_path}. Exiting...")
+    # Path to ChromeDriver
+    chromedriver_path = '/usr/local/bin/chromedriver'
+    if not os.path.exists(chromedriver_path):
+        logging.error(f"ChromeDriver not found at {chromedriver_path}. Exiting...")
         exit(1)
 
-    service = Service(geckodriver_path)
-    driver = webdriver.Firefox(service=service, options=options)
+    service = Service(chromedriver_path)
+    driver = webdriver.Chrome(service=service, options=options)
     logging.info("WebDriver setup complete.")
     return driver
 
