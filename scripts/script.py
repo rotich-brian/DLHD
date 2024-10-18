@@ -1,11 +1,12 @@
-import json
-import time
-import logging
-import os
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.proxy import Proxy, ProxyType
 from browsermobproxy import Server
+import time
+import logging
+import json
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +38,6 @@ def setup_selenium_driver(proxy):
     proxy_split = proxy.proxy.split(":")
     options.add_argument(f'--proxy-server={proxy_split[0]}:{proxy_split[1]}')
 
-    # Path to ChromeDriver
     chromedriver_path = '/usr/local/bin/chromedriver'
     if not os.path.exists(chromedriver_path):
         logging.error(f"ChromeDriver not found at {chromedriver_path}. Exiting...")
