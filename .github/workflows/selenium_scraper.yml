@@ -24,30 +24,26 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install selenium browsermob-proxy
 
-      - name: Install Specific Chrome Version (130.x.x.x)
+      - name: Install Google Chrome Stable
         run: |
           # Install necessary dependencies
           sudo apt-get update
           sudo apt-get install -y wget curl unzip
 
-          # Remove the default Chrome if it exists
-          sudo apt-get remove -y google-chrome-stable
+          # Install the stable version of Google Chrome
+          sudo apt-get install -y google-chrome-stable
 
-          # Download and Install Chrome version 130.x.x.x
-          wget https://storage.googleapis.com/chrome-for-testing-public/130.0.6723.58/linux64/chrome-linux64.zip
-          unzip chrome-linux64.zip
-          sudo mv chrome-linux64 /usr/bin/google-chrome
-          sudo chmod +x /usr/bin/google-chrome
-
-      - name: Install ChromeDriver for Version 130.x.x.x
+      - name: Install ChromeDriver for the Installed Chrome Version
         run: |
-          # Install ChromeDriver corresponding to Chrome version 130.x.x.x
-          wget https://storage.googleapis.com/chrome-for-testing-public/130.0.6723.58/linux64/chromedriver-linux64.zip
-          unzip chromedriver-linux64.zip
-          # Move the chromedriver from the folder to the proper location
+          # Find the installed Chrome version
+          CHROME_VERSION=$(google-chrome-stable --version | sed 's/Google Chrome //')
+          
+          # Install ChromeDriver corresponding to the installed Chrome version
+          CHROMEDRIVER_VERSION=$(curl -sS https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION})
+          wget https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
+          unzip chromedriver_linux64.zip
           sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
-
 
       - name: Install BrowserMob Proxy
         run: |
@@ -61,7 +57,7 @@ jobs:
         run: |
           echo "Running as $(whoami)"
           echo "Python version: $(python --version)"
-          echo "Google Chrome version: $(google-chrome --version)"
+          echo "Google Chrome version: $(google-chrome-stable --version)"
           echo "ChromeDriver version: $(chromedriver --version)"
           ls -l /usr/local/bin
           ls -l /home/runner/
