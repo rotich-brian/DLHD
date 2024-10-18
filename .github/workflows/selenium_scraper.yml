@@ -6,9 +6,18 @@ on:
     branches:
       - main
 
+env:
+  BROWSERPROXY_PATH: /usr/local/bin/browsermob-proxy/bin/browsermob-proxy
+  CHROMEDRIVER_PATH: /usr/local/bin/chromedriver
+  INPUT_FILE: scripts/soccer_data.json
+  OUTPUT_FILE: scripts/soccer_links.json
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    env:
+      BROWSERPROXY_PATH: /usr/local/bin/browsermob-proxy/bin/browsermob-proxy
+      CHROMEDRIVER_PATH: /usr/local/bin/chromedriver
 
     steps:
       - name: Checkout Repository
@@ -22,7 +31,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install selenium browsermob-proxy
+          python -m pip install selenium browsermob-proxy requests backoff
 
       - name: Install Stable Google Chrome
         run: |
