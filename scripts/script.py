@@ -88,11 +88,6 @@ try:
             driver.get(link)
             logging.info("Waiting for network response...")
 
-            # Wait until the video element is ready and play it if needed
-            # WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'video')))
-            # video_element = driver.find_element_by_tag_name("video")
-            # driver.execute_script("arguments[0].muted = false; arguments[0].play();", video_element)
-
             m3u8_url = None
             referrer_header = None
             origin_header = None
@@ -103,7 +98,13 @@ try:
             while time.time() - start_time < timeout:
                 for entry in proxy.har['log']['entries']:
                     request_url = entry['request']['url']
-                    # Use 'in' to check if the URL contains 'mono.m3u8'
+                    
+                    # Log details of each network request
+                    logging.info(f"Request URL: {request_url}")
+                    logging.info(f"Request Method: {entry['request']['method']}")
+                    logging.info(f"Request Headers: {json.dumps(entry['request']['headers'], indent=2)}")
+                    
+                    # Check if this request contains the m3u8 URL
                     if "mono.m3u8" in request_url:
                         m3u8_url = request_url
                         headers = entry['request']['headers']
@@ -127,7 +128,6 @@ try:
 
             if not m3u8_url:
                 logging.warning(f"No m3u8 URL found for match: {match_name} - Link: {link}")
-                print("")
 
         updated_matches.append(updated_match)
 
