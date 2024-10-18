@@ -33,6 +33,14 @@ def setup_selenium_driver(proxy):
     options.add_argument('--no-sandbox')
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--remote-debugging-port=9222")  # Debugging port for CI environments
+    options.add_argument("--disable-software-rasterizer")  # Prevent software rasterizer errors
+    options.add_argument("--start-maximized")  # Maximize Chrome on start
+    options.add_argument("--disable-extensions")  # Disable extensions if needed
+    options.add_argument("--disable-logging")  # Disable logs if needed
+
+    # Set the correct Chrome binary path for the environment
+    options.binary_location = '/usr/bin/chromium-browser'  # Adjust this path if needed for your environment
 
     # Set proxy settings for Chrome
     proxy_split = proxy.proxy.split(":")
@@ -74,6 +82,7 @@ with open('scripts/soccer_data.json') as file:
 matches = json.loads(data)["matches"]
 updated_matches = []
 
+# Set up BrowserMob Proxy and Selenium WebDriver
 server, proxy = setup_browsermob_proxy()
 driver = setup_selenium_driver(proxy)
 
@@ -108,6 +117,7 @@ finally:
         server.stop()
     logging.info("All done. WebDriver and server stopped.")
 
+# Save the updated data to a new JSON file
 updated_data = {"matches": updated_matches}
 with open("scripts/soccer_links.json", "w") as f:
     json.dump(updated_data, f, indent=4)
