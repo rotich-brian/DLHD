@@ -25,7 +25,7 @@ server = None
 try:
     # Setup BrowserMob Proxy and WebDriver
     logging.info("Setting up proxy...")
-    browsermob_proxy_path = os.getenv("BROWSERPROXY_PATH", "/home/runner/browsermob-proxy/bin/browsermob-proxy")
+    browsermob_proxy_path = os.getenv("BROWSERPROXY_PATH", "/usr/local/bin/browsermob-proxy/bin/browsermob-proxy")
     
     if not os.path.exists(browsermob_proxy_path):
         logging.error(f"BrowserMob Proxy not found at {browsermob_proxy_path}. Exiting...")
