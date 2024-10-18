@@ -38,6 +38,14 @@ jobs:
           sudo mv chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
 
+      - name: Install BrowserMob Proxy
+        run: |
+          # Install BrowserMob Proxy
+          wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-2.1.4/browsermob-proxy-2.1.4-bin.zip
+          unzip browsermob-proxy-2.1.4-bin.zip
+          sudo mv browsermob-proxy-2.1.4 /usr/local/bin/browsermob-proxy
+          sudo chmod +x /usr/local/bin/browsermob-proxy
+
       - name: Debug Information
         run: |
           echo "Running as $(whoami)"
