@@ -33,8 +33,11 @@ jobs:
           # Remove the default Chrome if it exists
           sudo apt-get remove -y google-chrome-stable
 
-          # Install the latest stable Google Chrome
-          sudo apt-get install -y google-chrome-stable
+          # Download the latest stable version of Google Chrome (deb package)
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+
+          # Install Google Chrome
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
 
       - name: Install ChromeDriver for Version 130.x.x.x
         run: |
