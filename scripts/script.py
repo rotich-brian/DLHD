@@ -2,6 +2,9 @@ import json
 import time
 import logging
 import os
+from datetime import datetime
+from typing import Dict, List, Optional
+from dataclasses import dataclass, asdict
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -9,141 +12,206 @@ from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from browsermobproxy import Server
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
+from urllib.parse import urlparse
+import backoff
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more detailed format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('soccer_scraper.log'),
+        logging.StreamHandler()
+    ]
+)
 
-# Your JSON data
-data = {}
-with open('scripts/soccer_data.json') as file:
-    data = file.read()
+@dataclass
+class StreamData:
+    competition: str
+    match: str
+    links: List[str]
+    m3u8_urls: List[str]
+    referrer: Optional[str]
+    origin: Optional[str]
+    last_updated: str
 
-# Parse JSON
-matches = json.loads(data)["matches"]
+class StreamScraper:
+    def __init__(self, proxy_path: str, driver_path: str):
+        self.proxy_path = proxy_path
+        self.driver_path = driver_path
+        self.server = None
+        self.driver = None
+        self.proxy = None
+        
+    def __enter__(self):
+        self.setup_proxy()
+        self.setup_driver()
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
 
-updated_matches = []
-driver = None
-server = None
-try:
-    # Setup BrowserMob Proxy and WebDriver
-    logging.info("Setting up proxy...")
-    browsermob_proxy_path = os.getenv("BROWSERPROXY_PATH", "/usr/local/bin/browsermob-proxy/bin/browsermob-proxy")
-    
-    if not os.path.exists(browsermob_proxy_path):
-        logging.error(f"BrowserMob Proxy not found at {browsermob_proxy_path}. Exiting...")
-        exit(1)
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
+    def setup_proxy(self):
+        """Set up BrowserMob proxy with retry mechanism"""
+        if not os.path.exists(self.proxy_path):
+            raise FileNotFoundError(f"BrowserMob Proxy not found at {self.proxy_path}")
+        
+        logging.info("Setting up proxy...")
+        self.server = Server(self.proxy_path)
+        self.server.start()
+        self.proxy = self.server.create_proxy()
+        logging.info(f"Proxy started on {self.proxy.proxy}")
 
-    server = Server(browsermob_proxy_path)
-    server.start()
-    proxy = server.create_proxy()
-    logging.info("Proxy setup complete.")
+    def setup_driver(self):
+        """Set up Chrome WebDriver with necessary options"""
+        if not os.path.exists(self.driver_path):
+            raise FileNotFoundError(f"ChromeDriver not found at {self.driver_path}")
 
-    proxy_settings = Proxy({
-        'proxyType': ProxyType.MANUAL,
-        'httpProxy': proxy.proxy,
-        'sslProxy': proxy.proxy
-    })
+        options = Options()
+        options.add_argument('--no-sandbox')
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--remote-debugging-port=9222')
+        options.add_argument('--autoplay-policy=no-user-gesture-required')
+        options.add_argument('--disable-features=IsolateOrigins,site-per-process')
 
-    options = Options()
-    options.headless = True
-    options.add_argument('--no-sandbox')
-    options.add_argument('--headless')
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--autoplay-policy=no-user-gesture-required")
-    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
-    options.proxy = proxy_settings
+        proxy_settings = Proxy({
+            'proxyType': ProxyType.MANUAL,
+            'httpProxy': self.proxy.proxy,
+            'sslProxy': self.proxy.proxy
+        })
+        options.proxy = proxy_settings
 
-    geckodriver_path = '/usr/local/bin/chromedriver'
-    if not os.path.exists(geckodriver_path):
-        logging.error(f"ChromeDriver not found at {geckodriver_path}. Exiting...")
-        exit(1)
+        service = Service(self.driver_path)
+        self.driver = webdriver.Chrome(service=service, options=options)
+        logging.info("WebDriver setup complete")
 
-    service = Service(geckodriver_path)
-    driver = webdriver.Chrome(service=service, options=options)
-    logging.info("WebDriver setup complete.")
+    def validate_m3u8_url(self, url: str) -> bool:
+        """Validate if the M3U8 URL is accessible"""
+        try:
+            response = requests.head(url, timeout=5)
+            return response.status_code == 200
+        except:
+            return False
 
-    # Loop through matches
-    for match in matches:
-        competition = match['competition']
-        match_name = match['match']
-        updated_match = {
-            "competition": competition,
-            "match": match_name,
-            "links": match['links'],
-            "m3u8_urls": [],
-            "referrer": None,
-            "origin": None
-        }
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3, max_time=30)
+    def extract_stream_data(self, link: str, match_name: str) -> Optional[Dict]:
+        """Extract M3U8 URL and headers from a single link with retry mechanism"""
+        logging.info(f"Processing link for match {match_name}: {link}")
+        
+        self.proxy.new_har("network_capture")
+        self.driver.get(link)
+
+        start_time = time.time()
+        timeout = 30
+        m3u8_data = None
+
+        while time.time() - start_time < timeout:
+            for entry in self.proxy.har['log']['entries']:
+                request_url = entry['request']['url']
+                
+                if "mono.m3u8" in request_url or "playlist.m3u8" in request_url:
+                    headers = {header['name'].lower(): header['value'] 
+                             for header in entry['request']['headers']}
+                    
+                    if self.validate_m3u8_url(request_url):
+                        m3u8_data = {
+                            'url': request_url,
+                            'referrer': headers.get('referer'),
+                            'origin': headers.get('origin')
+                        }
+                        logging.info(f"Valid M3U8 URL found: {request_url}")
+                        return m3u8_data
+            
+            time.sleep(1)
+
+        logging.warning(f"No valid M3U8 URL found for {match_name} - {link}")
+        return None
+
+    def process_match(self, match: Dict) -> StreamData:
+        """Process a single match and extract stream data"""
+        m3u8_urls = []
+        referrer = None
+        origin = None
 
         for link in match['links']:
-            logging.info(f"\nFetching match: {match_name} - Link: {link}")
+            try:
+                stream_data = self.extract_stream_data(link, match['match'])
+                if stream_data:
+                    m3u8_urls.append(stream_data['url'])
+                    referrer = stream_data['referrer']
+                    origin = stream_data['origin']
+            except Exception as e:
+                logging.error(f"Error processing link {link}: {str(e)}")
 
-            # Start new HAR for each link
-            proxy.new_har("network_capture")
+        return StreamData(
+            competition=match['competition'],
+            match=match['match'],
+            links=match['links'],
+            m3u8_urls=m3u8_urls,
+            referrer=referrer,
+            origin=origin,
+            last_updated=datetime.now().isoformat()
+        )
 
-            # Open the link
-            driver.get(link)
-            logging.info("Waiting for network response...")
+    def cleanup(self):
+        """Clean up resources"""
+        if self.driver:
+            self.driver.quit()
+        if self.server:
+            self.server.stop()
+        logging.info("Cleanup completed")
 
-            m3u8_url = None
-            referrer_header = None
-            origin_header = None
+def main():
+    # Load configuration
+    config = {
+        'proxy_path': os.getenv("BROWSERPROXY_PATH", "/usr/local/bin/browsermob-proxy/bin/browsermob-proxy"),
+        'driver_path': '/usr/local/bin/chromedriver',
+        'input_file': 'scripts/soccer_data.json',
+        'output_file': 'scripts/soccer_links.json'
+    }
 
-            timeout = 30  # Maximum wait time in seconds
-            start_time = time.time()
+    try:
+        # Load input data
+        with open(config['input_file']) as file:
+            matches = json.loads(file.read())["matches"]
 
-            while time.time() - start_time < timeout:
-                for entry in proxy.har['log']['entries']:
-                    request_url = entry['request']['url']
-                    
-                    # Log details of each network request
-                    logging.info(f"Request URL: {request_url}")
-                    logging.info(f"Request Method: {entry['request']['method']}")
-                    logging.info(f"Request Headers: {json.dumps(entry['request']['headers'], indent=2)}")
-                    
-                    # Check if this request contains the m3u8 URL
-                    if "mono.m3u8" in request_url:
-                        m3u8_url = request_url
-                        headers = entry['request']['headers']
+        updated_matches = []
+        
+        with StreamScraper(config['proxy_path'], config['driver_path']) as scraper:
+            # Process matches sequentially to avoid overwhelming resources
+            for match in matches:
+                try:
+                    stream_data = scraper.process_match(match)
+                    updated_matches.append(asdict(stream_data))
+                except Exception as e:
+                    logging.error(f"Error processing match {match['match']}: {str(e)}")
 
-                        headers_dict = {header['name'].lower(): header['value'] for header in headers}
-                        referrer_header = headers_dict.get('referer')
-                        origin_header = headers_dict.get('origin')
+        # Save results
+        output_data = {
+            "matches": updated_matches,
+            "metadata": {
+                "total_matches": len(updated_matches),
+                "timestamp": datetime.now().isoformat(),
+                "success_rate": sum(1 for m in updated_matches if m['m3u8_urls']) / len(updated_matches)
+            }
+        }
 
-                        logging.info(f"Found m3u8 URL: {m3u8_url}")
-                        logging.info(f"Referrer: {referrer_header}")
-                        logging.info(f"Origin: {origin_header}")
-                        break
-                
-                if m3u8_url:
-                    updated_match["m3u8_urls"].append(m3u8_url)
-                    updated_match["referrer"] = referrer_header
-                    updated_match["origin"] = origin_header
-                    break
+        with open(config['output_file'], "w") as f:
+            json.dump(output_data, f, indent=4)
 
-                time.sleep(1)
+        logging.info(f"Processing completed. Results saved to {config['output_file']}")
+        logging.info(f"Success rate: {output_data['metadata']['success_rate']:.2%}")
 
-            if not m3u8_url:
-                logging.warning(f"No m3u8 URL found for match: {match_name} - Link: {link}")
+    except Exception as e:
+        logging.error(f"Fatal error: {str(e)}")
+        raise
 
-        updated_matches.append(updated_match)
-
-finally:
-    # Clean up
-    if driver:
-        driver.quit()
-    if server:
-        server.stop()
-    logging.info("All done. WebDriver and server stopped.")
-
-# Prepare the updated JSON data
-updated_data = {"matches": updated_matches}
-
-# Output the updated JSON
-with open("scripts/soccer_links.json", "w") as f:
-    json.dump(updated_data, f, indent=4)
-
-logging.info("Updated JSON data has been written to 'soccer_links.json'.")
+if __name__ == "__main__":
+    main()
