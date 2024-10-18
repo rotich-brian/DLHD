@@ -44,8 +44,10 @@ jobs:
           # Install ChromeDriver corresponding to Chrome version 130.x.x.x
           wget https://storage.googleapis.com/chrome-for-testing-public/130.0.6723.58/linux64/chromedriver-linux64.zip
           unzip chromedriver-linux64.zip
-          sudo mv chromedriver /usr/local/bin/
+          # Move the chromedriver from the folder to the proper location
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
+
 
       - name: Install BrowserMob Proxy
         run: |
