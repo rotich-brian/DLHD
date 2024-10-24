@@ -21,11 +21,11 @@ import backoff
 
 # Enhanced logging configuration
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG for more verbose output
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('soccer_scraper.log'),
-        logging.StreamHandler(sys.stdout)  # Explicitly log to stdout for GitHub Actions
+        logging.StreamHandler(sys.stdout)
     ]
 )
 
@@ -58,11 +58,23 @@ class StreamScraper:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
 
+    def cleanup(self):
+        """Clean up resources"""
+        logging.info("Starting cleanup...")
+        try:
+            if self.driver:
+                self.driver.quit()
+                logging.info("Chrome driver closed successfully")
+            if self.server:
+                self.server.stop()
+                logging.info("Proxy server stopped successfully")
+        except Exception as e:
+            logging.error(f"Error during cleanup: {str(e)}")
+
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def setup_proxy(self):
         logging.debug(f"Setting up proxy at path: {self.proxy_path}")
         
-        # Verify proxy path exists
         if not os.path.exists(self.proxy_path):
             abs_path = os.path.abspath(self.proxy_path)
             logging.error(f"Proxy path not found. Absolute path: {abs_path}")
@@ -89,15 +101,15 @@ class StreamScraper:
 
         options = Options()
         options.add_argument('--no-sandbox')
-        options.add_argument('--headless=new')  # Updated headless argument
+        options.add_argument('--headless=new')
         options.add_argument('--disable-gpu')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--remote-debugging-port=9222')
         options.add_argument('--autoplay-policy=no-user-gesture-required')
         options.add_argument('--disable-features=IsolateOrigins,site-per-process')
-        options.add_argument('--disable-web-security')  # Added to handle CORS
-        options.add_argument('--allow-running-insecure-content')  # Added for mixed content
-        options.add_argument(f'--proxy-server={self.proxy.proxy}')  # Direct proxy configuration
+        options.add_argument('--disable-web-security')
+        options.add_argument('--allow-running-insecure-content')
+        options.add_argument(f'--proxy-server={self.proxy.proxy}')
         
         # Add required capabilities for media
         options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
@@ -108,6 +120,31 @@ class StreamScraper:
             logging.info("Chrome WebDriver setup complete")
         except Exception as e:
             logging.error(f"Failed to setup Chrome WebDriver: {str(e)}")
+            raise
+
+    def process_match(self, match: Dict) -> StreamData:
+        """Process a single match and extract stream data"""
+        logging.info(f"Processing match: {match['match']}")
+        all_streams = []
+
+        try:
+            for link in match['links']:
+                try:
+                    streams = self.extract_stream_data(link, match['match'])
+                    all_streams.extend(streams)
+                    logging.info(f"Found {len(streams)} streams for link: {link}")
+                except Exception as e:
+                    logging.error(f"Error processing link {link}: {str(e)}")
+
+            return StreamData(
+                competition=match['competition'],
+                match=match['match'],
+                links=match['links'],
+                streams=all_streams,
+                last_updated=datetime.now().isoformat()
+            )
+        except Exception as e:
+            logging.error(f"Error in process_match for {match['match']}: {str(e)}")
             raise
 
     def extract_stream_data(self, link: str, match_name: str) -> List[Dict]:
@@ -171,7 +208,6 @@ class StreamScraper:
             return []
 
 def main():
-    # Get configuration from environment variables with fallbacks
     config = {
         'proxy_path': os.getenv('BROWSERPROXY_PATH', '/usr/local/bin/browsermob-proxy/bin/browsermob-proxy'),
         'driver_path': os.getenv('CHROMEDRIVER_PATH', '/usr/local/bin/chromedriver'),
@@ -184,12 +220,15 @@ def main():
         logging.info(f"{key}: {value}")
 
     try:
-        # Verify input file exists
         if not os.path.exists(config['input_file']):
             raise FileNotFoundError(f"Input file not found: {config['input_file']}")
 
         with open(config['input_file']) as file:
-            matches = json.loads(file.read())["matches"]
+            data = json.loads(file.read())
+            matches = data.get("matches", [])
+            
+        if not matches:
+            logging.warning("No matches found in input file")
 
         updated_matches = []
         
@@ -201,7 +240,6 @@ def main():
                 except Exception as e:
                     logging.error(f"Error processing match {match['match']}: {str(e)}")
 
-        # Save results
         output_data = {
             "matches": updated_matches,
             "metadata": {
@@ -211,7 +249,6 @@ def main():
             }
         }
 
-        # Ensure output directory exists
         os.makedirs(os.path.dirname(config['output_file']), exist_ok=True)
         
         with open(config['output_file'], "w") as f:
