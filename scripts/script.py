@@ -19,7 +19,7 @@ import requests
 from urllib.parse import urlparse
 import backoff
 
-# Configure logging with more detailed format
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -34,9 +34,7 @@ class StreamData:
     competition: str
     match: str
     links: List[str]
-    m3u8_urls: List[str]
-    referrer: Optional[str]
-    origin: Optional[str]
+    streams: List[Dict[str, str]]  
     last_updated: str
 
 class StreamScraper:
@@ -57,7 +55,6 @@ class StreamScraper:
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def setup_proxy(self):
-        """Set up BrowserMob proxy with retry mechanism"""
         if not os.path.exists(self.proxy_path):
             raise FileNotFoundError(f"BrowserMob Proxy not found at {self.proxy_path}")
         
@@ -68,7 +65,6 @@ class StreamScraper:
         logging.info(f"Proxy started on {self.proxy.proxy}")
 
     def setup_driver(self):
-        """Set up Chrome WebDriver with necessary options"""
         if not os.path.exists(self.driver_path):
             raise FileNotFoundError(f"ChromeDriver not found at {self.driver_path}")
 
@@ -92,61 +88,101 @@ class StreamScraper:
         self.driver = webdriver.Chrome(service=service, options=options)
         logging.info("WebDriver setup complete")
 
-    def validate_m3u8_url(self, url: str) -> bool:
+    def _get_header_value(self, headers: List[Dict[str, str]], target_header: str) -> Optional[str]:
+        """Extract header value, checking both original and lowercase names."""
+        for header in headers:
+            name = header['name']
+            if name.lower() == target_header.lower():
+                return header['value']
+        return None
+
+    def validate_m3u8_url(self, url: str, headers: Optional[Dict[str, str]] = None) -> bool:
         """Validate if the M3U8 URL is accessible"""
         try:
-            response = requests.head(url, timeout=5)
+            response = requests.head(url, headers=headers, timeout=5)
             return response.status_code == 200
         except:
             return False
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3, max_time=30)
-    def extract_stream_data(self, link: str, match_name: str) -> Optional[Dict]:
-        """Extract M3U8 URL and headers from a single link with retry mechanism"""
+    def extract_stream_data(self, link: str, match_name: str) -> List[Dict]:
+        """Extract M3U8 URLs and headers from a single link with retry mechanism"""
         logging.info(f"Processing link for match {match_name}: {link}")
         
-        self.proxy.new_har("network_capture")
+        # Enable header capture
+        self.proxy.new_har("network_capture", options={'captureHeaders': True})
+        
+        # Inject headers via JavaScript
+        self.driver.execute_script(f"""
+            let originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function() {{
+                originalOpen.apply(this, arguments);
+                this.setRequestHeader('Referer', '{link}');
+                this.setRequestHeader('Origin', new URL('{link}').origin);
+            }};
+        """)
+        
         self.driver.get(link)
-
+        
         start_time = time.time()
         timeout = 30
-        m3u8_data = None
+        streams = []
 
         while time.time() - start_time < timeout:
             for entry in self.proxy.har['log']['entries']:
                 request_url = entry['request']['url']
                 
                 if "mono.m3u8" in request_url or "playlist.m3u8" in request_url:
-                    headers = {header['name'].lower(): header['value'] 
-                             for header in entry['request']['headers']}
+                    # Get headers from request
+                    request_headers = entry['request']['headers']
+                    response_headers = entry['response']['headers']
                     
-                    if self.validate_m3u8_url(request_url):
-                        m3u8_data = {
+                    # Try to get referrer and origin from various sources
+                    referer = (
+                        self._get_header_value(request_headers, 'Referer') or
+                        self._get_header_value(response_headers, 'Referer') or
+                        link
+                    )
+                    
+                    origin = (
+                        self._get_header_value(request_headers, 'Origin') or
+                        self._get_header_value(response_headers, 'Origin') or
+                        f"{urlparse(link).scheme}://{urlparse(link).netloc}"
+                    )
+                    
+                    # Construct headers for validation
+                    stream_headers = {
+                        'Referer': referer,
+                        'Origin': origin
+                    }
+                    
+                    if self.validate_m3u8_url(request_url, stream_headers):
+                        stream_data = {
                             'url': request_url,
-                            'referrer': headers.get('referer'),
-                            'origin': headers.get('origin')
+                            'referrer': referer,
+                            'origin': origin,
+                            'source_link': link
                         }
-                        logging.info(f"Valid M3U8 URL found: {request_url}")
-                        return m3u8_data
+                        streams.append(stream_data)
+                        logging.info(f"Valid stream found: {stream_data}")
             
+            if streams:
+                break
             time.sleep(1)
 
-        logging.warning(f"No valid M3U8 URL found for {match_name} - {link}")
-        return None
+        if not streams:
+            logging.warning(f"No valid streams found for {match_name} - {link}")
+        
+        return streams
 
     def process_match(self, match: Dict) -> StreamData:
         """Process a single match and extract stream data"""
-        m3u8_urls = []
-        referrer = None
-        origin = None
+        all_streams = []
 
         for link in match['links']:
             try:
-                stream_data = self.extract_stream_data(link, match['match'])
-                if stream_data:
-                    m3u8_urls.append(stream_data['url'])
-                    referrer = stream_data['referrer']
-                    origin = stream_data['origin']
+                streams = self.extract_stream_data(link, match['match'])
+                all_streams.extend(streams)
             except Exception as e:
                 logging.error(f"Error processing link {link}: {str(e)}")
 
@@ -154,9 +190,7 @@ class StreamScraper:
             competition=match['competition'],
             match=match['match'],
             links=match['links'],
-            m3u8_urls=m3u8_urls,
-            referrer=referrer,
-            origin=origin,
+            streams=all_streams,
             last_updated=datetime.now().isoformat()
         )
 
@@ -169,23 +203,20 @@ class StreamScraper:
         logging.info("Cleanup completed")
 
 def main():
-    # Load configuration
     config = {
-        'proxy_path': os.getenv("BROWSERPROXY_PATH", "/usr/local/bin/browsermob-proxy/bin/browsermob-proxy"),
-        'driver_path': '/usr/local/bin/chromedriver',
-        'input_file': 'scripts/soccer_data.json',
-        'output_file': 'scripts/soccer_links.json'
+        'proxy_path': os.getenv("BROWSERPROXY_PATH", "/usr/local/bin/browsermob-proxy/bin/browsermob-proxy"),  # Updated path to match reference
+        'driver_path': '/usr/local/bin/chromedriver',  # This path is already correct
+        'input_file': 'scripts/soccer_data.json',  # Updated path to match reference
+        'output_file': 'scripts/soccer_links.json'  # Updated path to match reference
     }
 
     try:
-        # Load input data
         with open(config['input_file']) as file:
             matches = json.loads(file.read())["matches"]
 
         updated_matches = []
         
         with StreamScraper(config['proxy_path'], config['driver_path']) as scraper:
-            # Process matches sequentially to avoid overwhelming resources
             for match in matches:
                 try:
                     stream_data = scraper.process_match(match)
@@ -193,13 +224,18 @@ def main():
                 except Exception as e:
                     logging.error(f"Error processing match {match['match']}: {str(e)}")
 
-        # Save results
+        # Calculate success metrics
+        matches_with_streams = sum(1 for m in updated_matches if m['streams'])
+        total_matches = len(updated_matches)
+        success_rate = matches_with_streams / total_matches if total_matches > 0 else 0
+
         output_data = {
             "matches": updated_matches,
             "metadata": {
-                "total_matches": len(updated_matches),
-                "timestamp": datetime.now().isoformat(),
-                "success_rate": sum(1 for m in updated_matches if m['m3u8_urls']) / len(updated_matches)
+                "total_matches": total_matches,
+                "matches_with_streams": matches_with_streams,
+                "success_rate": success_rate,
+                "timestamp": datetime.now().isoformat()
             }
         }
 
@@ -207,7 +243,7 @@ def main():
             json.dump(output_data, f, indent=4)
 
         logging.info(f"Processing completed. Results saved to {config['output_file']}")
-        logging.info(f"Success rate: {output_data['metadata']['success_rate']:.2%}")
+        logging.info(f"Success rate: {success_rate:.2%}")
 
     except Exception as e:
         logging.error(f"Fatal error: {str(e)}")
