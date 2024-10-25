@@ -9,17 +9,15 @@ from dataclasses import dataclass, asdict
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.proxy import Proxy, ProxyType
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from browsermobproxy import Server
 import requests
 from urllib.parse import urlparse
 import backoff
 
-# Enhanced logging configuration
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -34,7 +32,7 @@ class StreamData:
     competition: str
     match: str
     links: List[str]
-    streams: List[Dict[str, str]]  
+    streams: List[Dict[str, str]]
     last_updated: str
 
 class StreamScraper:
@@ -58,33 +56,12 @@ class StreamScraper:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
 
-    def cleanup(self):
-        """Clean up resources"""
-        logging.info("Starting cleanup...")
-        try:
-            if self.driver:
-                self.driver.quit()
-                logging.info("Chrome driver closed successfully")
-            if self.server:
-                self.server.stop()
-                logging.info("Proxy server stopped successfully")
-        except Exception as e:
-            logging.error(f"Error during cleanup: {str(e)}")
-
-    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def setup_proxy(self):
         logging.debug(f"Setting up proxy at path: {self.proxy_path}")
-        
-        if not os.path.exists(self.proxy_path):
-            abs_path = os.path.abspath(self.proxy_path)
-            logging.error(f"Proxy path not found. Absolute path: {abs_path}")
-            logging.debug(f"Directory contents: {os.listdir(os.path.dirname(abs_path))}")
-            raise FileNotFoundError(f"BrowserMob Proxy not found at {self.proxy_path}")
-        
         try:
             self.server = Server(self.proxy_path)
             self.server.start()
-            self.proxy = self.server.create_proxy()
+            self.proxy = self.server.create_proxy({'trustAllServers': True})
             logging.info(f"Proxy started successfully on {self.proxy.proxy}")
         except Exception as e:
             logging.error(f"Failed to start proxy server: {str(e)}")
@@ -93,12 +70,6 @@ class StreamScraper:
     def setup_driver(self):
         logging.debug(f"Setting up Chrome driver at path: {self.driver_path}")
         
-        if not os.path.exists(self.driver_path):
-            abs_path = os.path.abspath(self.driver_path)
-            logging.error(f"ChromeDriver not found. Absolute path: {abs_path}")
-            logging.debug(f"Directory contents: {os.listdir(os.path.dirname(abs_path))}")
-            raise FileNotFoundError(f"ChromeDriver not found at {self.driver_path}")
-
         options = Options()
         options.add_argument('--no-sandbox')
         options.add_argument('--headless=new')
@@ -111,101 +82,162 @@ class StreamScraper:
         options.add_argument('--allow-running-insecure-content')
         options.add_argument(f'--proxy-server={self.proxy.proxy}')
         
-        # Add required capabilities for media
-        options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+        # Enhanced logging preferences
+        options.set_capability('goog:loggingPrefs', {
+            'performance': 'ALL',
+            'browser': 'ALL',
+            'network': 'ALL'
+        })
         
         try:
             service = Service(self.driver_path)
             self.driver = webdriver.Chrome(service=service, options=options)
-            logging.info("Chrome WebDriver setup complete")
+            
+            # Add request interceptor
+            self.driver.execute_script("""
+                const originalOpen = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function() {
+                    this.addEventListener('load', function() {
+                        console.log('XHR Response:', {
+                            url: this.responseURL,
+                            status: this.status,
+                            headers: this.getAllResponseHeaders(),
+                            response: this.responseText
+                        });
+                    });
+                    originalOpen.apply(this, arguments);
+                };
+                
+                // Fetch interceptor
+                const originalFetch = window.fetch;
+                window.fetch = async (...args) => {
+                    const request = args[0];
+                    const url = typeof request === 'string' ? request : request.url;
+                    console.log('Fetch Request:', url);
+                    
+                    try {
+                        const response = await originalFetch(...args);
+                        const clone = response.clone();
+                        console.log('Fetch Response:', {
+                            url: url,
+                            status: clone.status,
+                            headers: [...clone.headers.entries()]
+                        });
+                        return response;
+                    } catch (error) {
+                        console.error('Fetch Error:', error);
+                        throw error;
+                    }
+                };
+            """)
+            
+            logging.info("Chrome WebDriver setup complete with enhanced monitoring")
         except Exception as e:
             logging.error(f"Failed to setup Chrome WebDriver: {str(e)}")
             raise
 
-    def process_match(self, match: Dict) -> StreamData:
-        """Process a single match and extract stream data"""
-        logging.info(f"Processing match: {match['match']}")
-        all_streams = []
-
-        try:
-            for link in match['links']:
-                try:
-                    streams = self.extract_stream_data(link, match['match'])
-                    all_streams.extend(streams)
-                    logging.info(f"Found {len(streams)} streams for link: {link}")
-                except Exception as e:
-                    logging.error(f"Error processing link {link}: {str(e)}")
-
-            return StreamData(
-                competition=match['competition'],
-                match=match['match'],
-                links=match['links'],
-                streams=all_streams,
-                last_updated=datetime.now().isoformat()
-            )
-        except Exception as e:
-            logging.error(f"Error in process_match for {match['match']}: {str(e)}")
-            raise
-
     def extract_stream_data(self, link: str, match_name: str) -> List[Dict]:
         logging.info(f"Processing link for match {match_name}: {link}")
+        streams = []
         
         try:
-            # Enable header capture with extended options
-            self.proxy.new_har("network_capture", options={
+            # Configure HAR capture with extended options
+            self.proxy.new_har("stream_capture", options={
                 'captureHeaders': True,
                 'captureContent': True,
-                'captureBinaryContent': True
+                'captureBinaryContent': True,
+                'captureTypes': ['application/x-mpegURL', 'application/vnd.apple.mpegurl']
             })
             
-            # Set up request interception
-            self.driver.execute_script("""
-                window.originalFetch = window.fetch;
-                window.fetch = async (...args) => {
-                    console.log('Fetch request:', args);
-                    const response = await window.originalFetch(...args);
-                    console.log('Fetch response:', response);
-                    return response;
-                };
-            """)
-            
             self.driver.get(link)
-            logging.debug(f"Page loaded: {link}")
+            logging.info(f"Page loaded: {link}")
             
-            # Wait for network activity to settle
-            time.sleep(5)
+            # Wait for potential iframes to load
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "iframe"))
+                )
+                # Switch to each iframe and wait for content
+                iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                for iframe in iframes:
+                    self.driver.switch_to.frame(iframe)
+                    time.sleep(2)  # Wait for iframe content
+                    self.driver.switch_to.default_content()
+            except TimeoutException:
+                logging.debug("No iframes found or timeout waiting for iframes")
             
-            streams = []
+            # Extended wait for dynamic content
+            time.sleep(10)
+            
+            # Collect browser console logs
+            browser_logs = self.driver.get_log('browser')
+            for log in browser_logs:
+                if 'm3u8' in log['message'].lower():
+                    logging.info(f"Found potential stream in console: {log['message']}")
+            
+            # Process HAR entries
             har_entries = self.proxy.har['log']['entries']
-            logging.debug(f"Total HAR entries: {len(har_entries)}")
+            logging.info(f"Processing {len(har_entries)} HAR entries")
             
             for entry in har_entries:
                 request_url = entry['request']['url']
-                logging.debug(f"Processing request URL: {request_url}")
+                request_headers = {h['name']: h['value'] for h in entry['request']['headers']}
+                response_headers = {h['name']: h['value'] for h in entry['response']['headers']}
                 
-                if "m3u8" in request_url.lower():
-                    logging.info(f"Found potential stream URL: {request_url}")
-                    
-                    # Extract headers
-                    request_headers = entry['request']['headers']
-                    response_headers = entry['response']['headers']
-                    
+                # Enhanced URL pattern matching
+                if any(pattern in request_url.lower() for pattern in [
+                    'm3u8', 'playlist', 'manifest', 'stream', 'media'
+                ]):
                     stream_data = {
                         'url': request_url,
                         'referrer': link,
                         'origin': f"{urlparse(link).scheme}://{urlparse(link).netloc}",
-                        'source_link': link,
-                        'response_status': entry['response']['status']
+                        'content_type': response_headers.get('content-type', ''),
+                        'request_headers': request_headers,
+                        'response_headers': response_headers,
+                        'status': entry['response']['status'],
+                        'timestamp': entry['startedDateTime']
                     }
                     
                     streams.append(stream_data)
-                    logging.info(f"Added stream: {stream_data}")
+                    logging.info(f"Found stream: {request_url}")
             
             return streams
             
         except Exception as e:
             logging.error(f"Error extracting stream data: {str(e)}", exc_info=True)
             return []
+
+    def process_match(self, match: Dict) -> StreamData:
+        """Process a single match and extract stream data"""
+        logging.info(f"Processing match: {match['match']}")
+        all_streams = []
+
+        for link in match['links']:
+            try:
+                streams = self.extract_stream_data(link, match['match'])
+                all_streams.extend(streams)
+                logging.info(f"Found {len(streams)} streams for link: {link}")
+            except Exception as e:
+                logging.error(f"Error processing link {link}: {str(e)}")
+
+        return StreamData(
+            competition=match['competition'],
+            match=match['match'],
+            links=match['links'],
+            streams=all_streams,
+            last_updated=datetime.now().isoformat()
+        )
+
+    def cleanup(self):
+        """Clean up resources"""
+        logging.info("Starting cleanup...")
+        if self.driver:
+            self.driver.quit()
+            logging.info("Chrome driver closed successfully")
+        if self.server:
+            self.server.stop()
+            logging.info("Proxy server stopped successfully")
 
 def main():
     config = {
@@ -220,15 +252,9 @@ def main():
         logging.info(f"{key}: {value}")
 
     try:
-        if not os.path.exists(config['input_file']):
-            raise FileNotFoundError(f"Input file not found: {config['input_file']}")
-
         with open(config['input_file']) as file:
             data = json.loads(file.read())
             matches = data.get("matches", [])
-            
-        if not matches:
-            logging.warning("No matches found in input file")
 
         updated_matches = []
         
