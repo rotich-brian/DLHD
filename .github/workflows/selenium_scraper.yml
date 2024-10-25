@@ -12,6 +12,7 @@ env:
   INPUT_FILE: scripts/soccer_data.json
   OUTPUT_FILE: scripts/soccer_links.json
   CHROME_OPTIONS_PATH: /tmp/chrome_options.json
+  DISPLAY: :99
 
 jobs:
   scrape:
@@ -24,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
       - name: Install Python Dependencies
         run: |
@@ -60,22 +61,33 @@ jobs:
           sudo mv browsermob-proxy-2.1.4 /usr/local/bin/browsermob-proxy
           sudo chmod -R +x /usr/local/bin/browsermob-proxy
 
-      - name: Setup Virtual Display
-        run: |
-          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
-          echo "export DISPLAY=:99" >> $GITHUB_ENV
-
       - name: Setup Chrome Options
         run: |
           echo '{"ChromeOptions":{"args":["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-software-rasterizer","--disable-extensions"]}}' > /tmp/chrome_options.json
 
-      - name: Run Selenium Script
+      - name: Clean up existing X server instances
+        run: |
+          sudo pkill Xvfb || true
+          sleep 2
+
+      - name: Setup and Run Script
         run: |
           mkdir -p scripts
           export PYTHONUNBUFFERED=1
-          xvfb-run --server-args="-screen 0 1920x1080x24" python scripts/script.py
+          
+          # Start Xvfb in the background
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 3  # Wait for Xvfb to start
+          
+          # Verify Xvfb is running
+          ps aux | grep Xvfb
+          
+          # Run the script
+          python scripts/script.py
         env:
           DISPLAY: :99
+          PYTHONPATH: ${{ env.pythonLocation }}
+          LD_LIBRARY_PATH: ${{ env.pythonLocation }}/lib
           CHROME_OPTIONS_PATH: /tmp/chrome_options.json
 
       - name: Upload Result
